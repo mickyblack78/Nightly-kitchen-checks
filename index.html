@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kitchen Closing Checklist</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#f4f6f5">
+    
+    <!-- Fixed Tailwind CSS Script Link -->
+    <script src="https://jsdelivr.net"></script>
+    
+    <style>
+        /* Bright, Clean Ceramic Tile Kitchen Theme */
+        body {
+            background-color: #f4f6f5;
+            background-image: linear-gradient(rgba(244, 246, 245, 0.85), rgba(244, 246, 245, 0.92)), 
+                              url('https://unsplash.com');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+    </style>
+</head>
+<body class="text-gray-800 font-sans min-h-screen flex items-center justify-center p-4">
+
+    <!-- Locked State Container (Bright High-Contrast Look) -->
+    <div id="lockScreen" class="hidden max-w-md w-full bg-white/95 border border-gray-200 rounded-2xl p-8 text-center shadow-xl backdrop-blur-md">
+        <div class="text-5xl mb-4">🍳</div>
+        <h2 class="text-2xl font-bold text-emerald-600 mb-2">Kitchen Checklist Locked</h2>
+        <p class="text-gray-600 text-sm mb-6">This operational checklist automatically unlocks daily at <span class="font-bold text-gray-900">8:15 PM</span>.</p>
+        <div id="countdown" class="text-3xl font-mono tracking-wider font-semibold text-gray-800 bg-gray-100 py-3 px-4 rounded-xl border border-gray-200">
+            00:00:00
+        </div>
+        <button onclick="bypassLock()" class="mt-6 text-xs text-emerald-600/70 hover:text-emerald-700 font-medium transition underline cursor-pointer">
+            Manager Bypass (Open Now)
+        </button>
+    </div>
+
+    <!-- Active Checklist Container (Bright Kitchen Dashboard) -->
+    <div id="appScreen" class="hidden max-w-lg w-full bg-white border border-gray-200 rounded-2xl shadow-xl overflow-hidden">
+        <!-- Header -->
+        <div class="bg-gray-50 border-b border-gray-200 p-5 flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold text-gray-900 tracking-wide flex items-center gap-2">
+                    <span>🧑‍🍳</span> Kitchen Closeout
+                </h1>
+                <p class="text-xs text-gray-500 mt-0.5">Automated Nightly Inventory & Safety</p>
+            </div>
+            <button onclick="addNewItem()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-2 px-3 rounded-lg transition shadow-sm flex items-center gap-1 cursor-pointer">
+                ➕ Add Task
+            </button>
+        </div>
+
+        <!-- Task List Container -->
+        <div id="todoList" class="p-5 space-y-3 max-h-[60vh] overflow-y-auto bg-gray-50/50">
+            <!-- Dynamic items go here -->
+        </div>
+
+        <!-- Footer / Control Panel -->
+        <div class="bg-gray-50 border-t border-gray-200 p-4 flex justify-between items-center text-xs text-gray-500">
+            <span id="progressText" class="font-medium text-gray-700">0/0 Tasks Completed</span>
+            <button onclick="resetChecklist()" class="text-gray-400 hover:text-red-500 transition font-medium cursor-pointer flex items-center gap-1">
+                🔄 Reset List
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Core default task array
+        const defaultTasks = ["lights", "oven", "gas", "sink", "microwave", "fridge", "freezer", "meat"];
+        let tasks = [];
+
+        // Load initialization state
+        function initApp() {
+            const saved = localStorage.getItem('kitchen_tasks');
+            if (saved) {
+                tasks = JSON.parse(saved);
+            } else {
+                tasks = defaultTasks.map((name, index) => ({
+                    id: Date.now() + index,
+                    text: name.charAt(0).toUpperCase() + name.slice(1),
+                    done: false
+                }));
+                saveTasks();
+            }
+            
+            // Start the time-lock evaluation loop
+            checkTimeLock();
+            setInterval(checkTimeLock, 1000);
+            renderTasks();
+        }
+
+        // 8:15 PM Lock Management Logic
+        function checkTimeLock() {
+            if (sessionStorage.getItem('bypass_lock') === 'true') {
+                showApp();
+                return;
+            }
+
+            const now = new Date();
+            const currentHour = now.getHours();
+            const currentMinute = now.getMinutes();
+            
+            // Calculate if current time is past 8:15 PM (20:15)
+            const isPast815PM = (currentHour > 20) || (currentHour === 20 && currentMinute >= 15);
+
+            if (isPast815PM) {
+                showApp();
+            } else {
+                showLock(now);
+            }
+        }
+
+        function showApp() {
+            document.getElementById('lockScreen').classList.add('hidden');
+            document.getElementById('appScreen').classList.remove('hidden');
+        }
+
+        function showLock(now) {
+            document.getElementById('appScreen').classList.add('hidden');
+            document.getElementById('lockScreen').classList.remove('hidden');
+
+            // Calculate countdown to 8:15 PM tonight
+            const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 20, 15, 0);
+            let diff = target - now;
+
+            // If it is past 8:15 PM but session hasn't updated lock, target tomorrow
+            if (diff < 0) {
+                target.setDate(target.getDate() + 1);
+                diff = target - now;
+            }
+
+            const hours = Math.floor(diff / (1000 * 60 * 60)).toString().padStart(2, '0');
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)).toString().padStart(2, '0');
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000).toString().padStart(2, '0');
+
+            document.getElementById('countdown').innerText = `${hours}:${minutes}:${seconds}`;
+        }
+
+        function bypassLock() {
+            sessionStorage.setItem('bypass_lock', 'true');
+            showApp();
+        }
+
+        // Render Tasks to screen with High-Contrast Bright Styling
+        function renderTasks() {
+            const container = document.getElementById('todoList');
+            container.innerHTML = '';
+
+            tasks.forEach(task => {
+                const row = document.createElement('div');
+                row.className = `flex items-center justify-between p-3.5 rounded-xl border transition-all ${
+                    task.done 
+                    ? 'bg-gray-100/70 border-gray-200 text-gray-400' 
+                    : 'bg-white border-gray-200 text-gray-800 hover:border-emerald-500/50 shadow-sm'
+                }`;
+
+                row.innerHTML = `
+                    <div class="flex items-center gap-3 flex-1 mr-2">
+                        <input type="checkbox" ${task.done ? 'checked' : ''} 
+                               onclick="toggleTask(${task.id})" 
+                               class="w-5 h-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 bg-white cursor-pointer">
+                        <input type="text" value="${task.text}" 
+                               onchange="editTask(${task.id}, this.value)"
+                               class="bg-transparent border-b border-transparent hover:border-gray-300 focus:border-emerald-500 focus:outline-none py-0.5 px-1 flex-1 font-semibold tracking-wide text-sm ${task.done ? 'line-through text-gray-400 font-normal' : ''}">
+                    </div>
+                    <button onclick="deleteTask(${task.id})" class="text-gray-400 hover:text-red-500 transition text-sm p-1 cursor-pointer">🗑️</button>
+                `;
+                container.appendChild(row);
+            });
+
+            updateProgress();
+        }
+
+        function toggleTask(id) {
+            tasks = tasks.map(t => t.id === id ? { ...t, done: !t.done } : t);
+            saveTasks();
+            renderTasks();
+        }
+
+        function editTask(id, newText) {
+            if (!newText.trim()) return;
+            tasks = tasks.map(t => t.id === id ? { ...t, text: newText.trim() } : t);
+            saveTasks();
+        }
+
+        function deleteTask(id) {
+            tasks = tasks.filter(t => t.id !== id);
+            saveTasks();
+            renderTasks();
+        }
+
+        function addNewItem() {
+            const newItem = {
+                id: Date.now(),
+                text: "New Kitchen Task",
+                done: false
+            };
+            tasks.unshift(newItem);
+            saveTasks();
+            renderTasks();
+        }
+
+        function resetChecklist() {
+            if (confirm("Reset all items to unchecked status?")) {
+                tasks = tasks.map(t => ({ ...t, done: false }));
+                saveTasks();
+                renderTasks();
+            }
+        }
+
+        function saveTasks() {
+            localStorage.setItem('kitchen_tasks', JSON.stringify(tasks));
+        }
+
+        function updateProgress() {
+            const doneCount = tasks.filter(t => t.done).length;
+            document.getElementById('progressText').innerText = `${doneCount}/${tasks.length} Tasks Completed`;
+        }
+
+        // Automatic Update Check Injection Engine (Auto PWA Change Detection)
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').then(reg => {
+                // Check GitHub repo updates instantly by forcing periodic manifest evaluation
+                setInterval(() => { reg.update(); }, 60000); 
+                
+                reg.addEventListener('updatefound', () => {
+                    const newWorker = reg.installing;
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            // Immediately cycle out old instance to display new edited code changes
+                            window.location.reload();
+                        }
+                    });
+                });
+            });
+        }
+
+        window.onload = initApp;
+    </script>
+</body>
+</html>
+      
