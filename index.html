@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kitchen Closing Checklist</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1e2522">
+    
+    <!-- Tailwind CSS for modern styling -->
+    <script src="https://jsdelivr.net"></script>
+    
+    <style>
+        /* Modern Kitchen Slate / Chef Theme Background */
+        body {
+            background-color: #121614;
+            background-image: linear-gradient(rgba(18, 22, 20, 0.88), rgba(18, 22, 20, 0.95)), 
+                              url('https://unsplash.com');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+    </style>
+</head>
+<body class="text-gray-100 font-sans min-h-screen flex items-center justify-center p-4">
+
+    <!-- Locked State Container -->
+    <div id="lockScreen" class="hidden max-w-md w-full bg-[#1a211e]/95 border border-[#2d3a34] rounded-2xl p-8 text-center shadow-2xl backdrop-blur-md">
+        <div class="text-5xl mb-4">🍳</div>
+        <h2 class="text-2xl font-bold text-[#4ade80] mb-2">Kitchen Checklist Locked</h2>
+        <p class="text-gray-400 text-sm mb-6">This operational checklist automatically unlocks daily at <span class="font-bold text-white">8:15 PM</span>.</p>
+        <div id="countdown" class="text-3xl font-mono tracking-wider font-semibold text-gray-200 bg-[#121614] py-3 px-4 rounded-xl border border-[#232d28]">
+            00:00:00
+        </div>
+        <button onclick="bypassLock()" class="mt-6 text-xs text-[#4ade80]/50 hover:text-[#4ade80] transition underline cursor-pointer">
+            Manager Bypass (Open Now)
+        </button>
+    </div>
+
+    <!-- Active Checklist Container -->
+    <div id="appScreen" class="hidden max-w-lg w-full bg-[#1a211e]/95 border border-[#2d3a34] rounded-2xl shadow-2xl backdrop-blur-md overflow-hidden">
+        <!-- Header -->
+        <div class="bg-[#232d28] border-b border-[#2d3a34] p-5 flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold text-white tracking-wide flex items-center gap-2">
+                    <span>🧑‍🍳</span> Kitchen Closeout
+                </h1>
+                <p class="text-xs text-gray-400 mt-0.5">Automated Nightly Inventory & Safety</p>
+            </div>
+            <button onclick="addNewItem()" class="bg-[#2e7d52] hover:bg-[#3b9c67] text-white text-xs font-semibold py-2 px-3 rounded-lg transition shadow-md flex items-center gap-1 cursor-pointer">
+                ➕ Add Task
+            </button>
+        </div>
+
+        <!-- Task List -->
+        <div id="todoList" class="p-5 space-y-3 max-h-[60vh] overflow-y-auto">
+            <!-- Dynamic items go here -->
+        </div>
+
+        <!-- Footer / Control Panel -->
+        <div class="bg-[#121614] border-t border-[#2d3a34] p-4 flex justify-between items-center text-xs text-gray-400">
+            <span id="progressText">0/0 Tasks Completed</span>
+            <button onclick="resetChecklist()" class="hover:text-red-400 transition cursor-pointer flex items-center gap-1">
+                🔄 Reset List
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Core default task array as requested
+        const defaultTasks = ["lights", "oven", "gas", "sink", "microwave", "fridge", "freezer", "meat"];
+        let tasks = [];
+
+        // Load initialization state
+        function initApp() {
+            const saved = localStorage.getItem('kitchen_tasks');
+            if (saved) {
+                tasks = JSON.parse(saved);
+            } else {
+                tasks = defaultTasks.map((name, index) => ({
+                    id: Date.now() + index,
+                    text: name.charAt(0).toUpperCase() + name.slice(1),
+                    done: false
+                }));
+                saveTasks();
+            }
+            
+            // Start the time-lock evaluation loop
+            checkTimeLock();
+            setInterval(checkTimeLock, 1000);
+            renderTasks();
+        }
+
+        // 8:15 PM Lock Management Logic
+        function checkTimeLock() {
+            if (sessionStorage.getItem('bypass_lock') === 'true') {
+                showApp();
+                return;
+            }
+
+            const now = new Date();
+            const currentHour = now.getHours();
+            const currentMinute = now.getMinutes();
+            
+            // Calculate if current time is past 8:15 PM (20:15)
+            const isPast815PM = (currentHour > 20) || (currentHour === 20 && currentMinute >= 15);
+
+            if (isPast815PM) {
+                showApp();
+            } else {
+                showLock(now);
+            }
+        }
+
+        function showApp() {
+            document.getElementById('lockScreen').classList.add('hidden');
+            document.getElementById('appScreen').classList.remove('hidden');
+        }
+
+        function showLock(now) {
+            document.getElementById('appScreen').classList.add('hidden');
+            document.getElementById('lockScreen').classList.remove('hidden');
+
+            // Calculate countdown to 8:15 PM tonight
+            const target = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 20, 15, 0);
+            const diff = target - now;
+
+            const hours = Math.floor(diff / (1000 * 60 * 60)).toString().padStart(2, '0');
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)).toString().padStart(2, '0');
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000).toString().padStart(2, '0');
+
+            document.getElementById('countdown').innerText = `${hours}:${minutes}:${seconds}`;
+        }
+
+        function bypassLock() {
+            sessionStorage.setItem('bypass_lock', 'true');
+            showApp();
+        }
+
+        // Render Tasks to screen with inline editing and persistence
+        function renderTasks() {
+            const container = document.getElementById('todoList');
+            container.innerHTML = '';
+
+            tasks.forEach(task => {
+                const row = document.createElement('div');
+                row.className = `flex items-center justify-between p-3.5 rounded-xl border transition-all ${
+                    task.done 
+                    ? 'bg-[#151c19]/40 border-[#1f2b24] text-gray-500' 
+                    : 'bg-[#202924]/60 border-[#2d3a34] text-gray-200 hover:border-[#4ade80]/30'
+                }`;
+
+                row.innerHTML = `
+                    <div class="flex items-center gap-3 flex-1 mr-2">
+                        <input type="checkbox" ${task.done ? 'checked' : ''} 
+                               onclick="toggleTask(${task.id})" 
+                               class="w-5 h-5 rounded border-[#2d3a34] text-[#4ade80] focus:ring-[#4ade80] bg-[#121614] cursor-pointer">
+                        <input type="text" value="${task.text}" 
+                               onchange="editTask(${task.id}, this.value)"
+                               class="bg-transparent border-b border-transparent hover:border-gray-600 focus:border-[#4ade80] focus:outline-none py-0.5 px-1 flex-1 font-medium tracking-wide text-sm ${task.done ? 'line-through text-gray-500' : ''}">
+                    </div>
+                    <button onclick="deleteTask(${task.id})" class="text-gray-500 hover:text-red-400 transition text-sm p-1 cursor-pointer">🗑️</button>
+                `;
+                container.appendChild(row);
+            });
+
+            updateProgress();
+        }
+
+        function toggleTask(id) {
+            tasks = tasks.map(t => t.id === id ? { ...t, done: !t.done } : t);
+            saveTasks();
+            renderTasks();
+        }
+
+        function editTask(id, newText) {
+            if (!newText.trim()) return;
+            tasks = tasks.map(t => t.id === id ? { ...t, text: newText.trim() } : t);
+            saveTasks();
+        }
+
+        function deleteTask(id) {
+            tasks = tasks.filter(t => t.id !== id);
+            saveTasks();
+            renderTasks();
+        }
+
+        function addNewItem() {
+            const newItem = {
+                id: Date.now(),
+                text: "New Kitchen Task",
+                done: false
+            };
+            tasks.unshift(newItem);
+            saveTasks();
+            renderTasks();
+        }
+
+        function resetChecklist() {
+            if (confirm("Reset all items to unchecked status?")) {
+                tasks = tasks.map(t => ({ ...t, done: false }));
+                saveTasks();
+                renderTasks();
+            }
+        }
+
+        function saveTasks() {
+            localStorage.setItem('kitchen_tasks', JSON.stringify(tasks));
+        }
+
+        function updateProgress() {
+            const doneCount = tasks.filter(t => t.done).length;
+            document.getElementById('progressText').innerText = `${doneCount}/${tasks.length} Tasks Completed`;
+        }
+
+        // Automatic Update Check Injection Engine (Auto PWA Change Detection)
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').then(reg => {
+                // Check GitHub repo updates instantly by forcing periodic manifest evaluation
+                setInterval(() => { reg.update(); }, 60000); 
+                
+                reg.addEventListener('updatefound', () => {
+                    const newWorker = reg.installing;
+                    newWorker.addEventListener('statechange', () => {
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            // Immediately cycle out old instance to display new edited code changes
+                            window.location.reload();
+                        }
+                    });
+                });
+            });
+        }
